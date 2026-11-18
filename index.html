@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#09090b">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg">
+<title>CineAI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style type="text/tailwindcss">
+  body { @apply bg-zinc-950 text-zinc-100; font-family: 'Noto Sans Tamil', system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  .btn { @apply w-full min-h-[3.5rem] rounded-2xl bg-zinc-800 px-4 text-base font-semibold active:scale-[.98] disabled:opacity-40; }
+  .red { @apply bg-red-600; }
+  .inp { @apply w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3.5 text-base outline-none focus:border-red-600; }
+  .card { @apply space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { html, render, useState, useEffect, useRef } from 'https://esm.sh/htm@3.1.1/preact/standalone';
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+/* ---------- Tamil / English ---------- */
+const T = {
+  ta: { projects: 'என் படங்கள்', title: 'படத்தின் பெயர்', create: '＋ புதிய படம்', story: 'கதை', chars: 'பாத்திரங்கள்', video: 'வீடியோ',
+    storyPh: 'கதை / திரைக்கதை / வசனம் இங்க எழுதுங்க (தமிழ், Tanglish, English).\nகாட்சிகளுக்கு நடுவுல ஒரு வெற்று வரி விடுங்க.\nவசனம்: "பெயர்: வசனம்"', split: '✂ காட்சிகளாகப் பிரி',
+    scene: 'காட்சி', visual: 'காட்சி விவரம்', dlg: 'வசனம் (பெயர்: வசனம்)', add: '＋ காட்சி சேர்', photo: '📷 கேலரியிலிருந்து முகம் தேர்வு', name: 'பெயர்', age: 'வயது',
+    pers: 'குணம் (தைரியசாலி, நகைச்சுவை…)', dress: 'உடை (சிவப்பு புடவை…)', voice: 'குரல்', save: 'பாத்திரம் சேமி', gen: '🎬 வீடியோ உருவாக்கு', again: '↻ எல்லாம் மறுபடி உருவாக்கு',
+    dl: '⬇ முழு படம் டவுன்லோட்', clip: 'டவுன்லோட்', subs: 'சப்டைட்டில் சேர்', music: '🎵 பின்னணி இசை சேர்', vol: 'இசை அளவு', del: 'நீக்கு', code: 'அணுகல் குறியீடு (Access code)',
+    ready: 'தயார்', wait: 'காத்திருக்கு', noScenes: 'முதலில் கதை எழுதி காட்சிகளாகப் பிரிங்க.', merging: 'படத்தை இணைக்கிறது… screen-ஐ off பண்ணாதீங்க', generating: 'உருவாகிறது', lang: 'English',
+    confirm: 'நிச்சயமா?', cams: ['அகல ஷாட்', 'மீடியம் ஷாட்', 'க்ளோஸ்-அப்', 'தோள் மேல் ஷாட்', 'டிராக்கிங் ஷாட்', 'லோ ஆங்கிள்', 'ட்ரோன் ஷாட்'],
+    genres: { Action: 'ஆக்ஷன்', Love: 'காதல்', Horror: 'திகில்', Comedy: 'நகைச்சுவை' }, empty: 'இன்னும் படம் இல்ல. மேல பெயர் கொடுத்து ஆரம்பிங்க.' },
+  en: { projects: 'My movies', title: 'Movie title', create: '+ New movie', story: 'Story', chars: 'Characters', video: 'Video',
+    storyPh: 'Write story / screenplay / dialogue (Tamil, Tanglish, English).\nLeave a blank line between scenes.\nDialogue: "Name: line"', split: '✂ Split into scenes',
+    scene: 'Scene', visual: 'Visual description', dlg: 'Dialogue (Name: line)', add: '+ Add scene', photo: '📷 Pick face photo from gallery', name: 'Name', age: 'Age',
+    pers: 'Personality', dress: 'Dress', voice: 'Voice', save: 'Save character', gen: '🎬 Generate video', again: '↻ Regenerate all',
+    dl: '⬇ Download full movie', clip: 'Download', subs: 'Burn subtitles', music: '🎵 Add background music', vol: 'Music volume', del: 'Delete', code: 'Access code',
+    ready: 'ready', wait: 'waiting', noScenes: 'Write a story and split it into scenes first.', merging: 'Joining movie… keep the screen on', generating: 'Generating', lang: 'தமிழ்',
+    confirm: 'Sure?', cams: ['Wide shot', 'Medium shot', 'Close-up', 'Over-the-shoulder', 'Tracking shot', 'Low angle', 'Drone shot'],
+    genres: { Action: 'Action', Love: 'Love', Horror: 'Horror', Comedy: 'Comedy' }, empty: 'No movies yet. Name one above to start.' },
+};
+let L = localStorage.lang || 'ta';
+const t = (k) => T[L][k] ?? k;
+const CAMS_EN = T.en.cams;
+const VOICES = { 'Male 1': 'deep adult male voice', 'Male 2': 'warm young male voice', 'Female 1': 'soft adult female voice', 'Female 2': 'bright young female voice', Child: 'small child voice' };
+
+/* ---------- storage (IndexedDB: projects, photos, clips all stay on the phone) ---------- */
+const idb = new Promise((r) => { const q = indexedDB.open('cineai', 1); q.onupgradeneeded = () => q.result.createObjectStore('k'); q.onsuccess = () => r(q.result); });
+const tx = async (m, f) => { const d = await idb; return new Promise((res, rej) => { const x = d.transaction('k', m); const r = f(x.objectStore('k')); x.oncomplete = () => res(r.result); x.onerror = () => rej(x.error); }); };
+const kv = { get: (k) => tx('readonly', (s) => s.get(k)), set: (k, v) => tx('readwrite', (s) => s.put(v, k)), del: (k) => tx('readwrite', (s) => s.delete(k)), keys: () => tx('readonly', (s) => s.getAllKeys()) };
+
+/* ---------- helpers ---------- */
+const rid = () => Math.random().toString(36).slice(2, 10);
+const parse = (d = '') => d.split('\n').filter(Boolean).map((l) => { const m = l.match(/^\s*([^:]{1,30}):\s*(.+)$/); return m ? { who: m[1].trim(), text: m[2] } : { who: '', text: l }; });
+const hdr = () => ({ 'Content-Type': 'application/json', 'x-access-code': localStorage.code || '' });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function call(body) {
+  const r = await fetch('/api/gen', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || 'Server error ' + r.status);
+  return d;
+}
+const shrink = (file) => new Promise((res) => { // gallery photo -> 768px JPEG
+  const img = new Image(); img.onload = () => { const s = Math.min(1, 768 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = img.width * s; c.height = img.height * s; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.85)); };
+  img.src = URL.createObjectURL(file); });
+const lastFrame = (b) => new Promise((res) => { // last frame of a clip = start frame of next scene (no ffmpeg needed)
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = URL.createObjectURL(b);
+  v.onloadedmetadata = () => { v.currentTime = Math.max(0, v.duration - 0.1); };
+  v.onseeked = () => { const s = Math.min(1, 768 / v.videoWidth), c = document.createElement('canvas'); c.width = v.videoWidth * s; c.height = v.videoHeight * s;
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.85)); URL.revokeObjectURL(v.src); };
+  v.onerror = () => res(null); });
+function splitStory(text) {
+  let blocks = text.split(/\n\s*\n|\n(?=\s*(?:scene|காட்சி)\s*\d+)/i).map((s) => s.trim()).filter(Boolean);
+  if (blocks.length < 2) { const s = text.split(/(?<=[.!?।])\s+/).filter(Boolean); blocks = []; for (let i = 0; i < s.length; i += 2) blocks.push(s.slice(i, i + 2).join(' ')); }
+  return blocks.map((b, i) => { const vis = [], dl = [];
+    for (const line of b.split('\n')) { const m = line.match(/^\s*([^:\n]{1,30}):\s*(.+)$/); if (m) dl.push(`${m[1].trim()}: ${m[2].trim()}`); else vis.push(line.trim()); }
+    return { id: rid(), visual: vis.join(' '), dialogue: dl.join('\n'), camera: i % 7, duration: 8 }; });
+}
+function buildPrompt(p, i) {
+  const s = p.scenes[i];
+  const chars = p.chars.map((c) => `${c.name} (${[c.age && c.age + ' years old', c.pers, c.dress && 'wearing ' + c.dress].filter(Boolean).join(', ')}; ${VOICES[c.voice]})`).join('; ');
+  return [`Cinematic photorealistic ${p.genre} film, shot ${i + 1}. ${CAMS_EN[s.camera]}. ${s.visual}`,
+    chars && `Characters (face and outfit must match the reference image exactly): ${chars}.`,
+    s.dialogue && `Dialogue, spoken aloud with accurate lip-sync: ${s.dialogue.replace(/\n/g, ' | ')}`,
+    i > 0 && 'Continue seamlessly from the previous shot: same place, lighting, costumes. No cut.',
+    'Natural motion, film grain, shallow depth of field.'].filter(Boolean).join('\n');
+}
+// Join all clips on the phone: play them one after another into a canvas and record it (MediaRecorder).
+async function merge(p, items, { subs, vol, music }) {
+  const first = document.createElement('video'); first.src = URL.createObjectURL(items[0].blob);
+  await new Promise((r) => (first.onloadedmetadata = r));
+  const w = first.videoWidth, h = first.videoHeight, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d'), ac = new AudioContext(), dest = ac.createMediaStreamDestination();
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const mime = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 }), chunks = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  const stopped = new Promise((r) => (rec.onstop = r));
+  let bg = null;
+  if (music) { bg = new Audio(URL.createObjectURL(music)); bg.loop = true; const g = ac.createGain(); g.gain.value = vol; ac.createMediaElementSource(bg).connect(g).connect(dest); }
+  await ac.resume(); rec.start(); bg && bg.play();
+  for (const { blob, sc } of items) {
+    const v = document.createElement('video'); v.src = URL.createObjectURL(blob); v.playsInline = true; ac.createMediaElementSource(v).connect(dest);
+    const lines = parse(sc.dialogue); let on = true;
+    const draw = () => { if (!on) return; cx.drawImage(v, 0, 0, w, h);
+      if (subs && lines.length) { const l = lines[Math.min(lines.length - 1, Math.floor((v.currentTime / (v.duration || 1)) * lines.length))], fs = Math.round(h / 26);
+        cx.font = `600 ${fs}px 'Noto Sans Tamil', sans-serif`; cx.textAlign = 'center'; const tw = Math.min(w * 0.92, cx.measureText(l.text).width + 24);
+        cx.fillStyle = 'rgba(0,0,0,.65)'; cx.fillRect((w - tw) / 2, h - fs * 2.4, tw, fs * 1.6); cx.fillStyle = '#fff'; cx.fillText(l.text, w / 2, h - fs * 1.2, w * 0.9); }
+      requestAnimationFrame(draw); };
+    await v.play(); draw(); await new Promise((r) => (v.onended = r)); on = false;
+  }
+  bg && bg.pause(); rec.stop(); await stopped; ac.close();
+  return { blob: new Blob(chunks, { type: rec.mimeType }), ext: mime.includes('mp4') ? 'mp4' : 'webm' };
+}
+const save = (name, blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); };
+
+/* ---------- App ---------- */
+function App() {
+  const [, tick] = useState(0);
+  const [list, setList] = useState([]), [id, setId] = useState(null), [f, setF] = useState({ title: '', genre: 'Action', aspect: '16:9' }), [cfg, setCfg] = useState(false);
+  const load = async () => { const ks = (await kv.keys()).filter((k) => k.startsWith('p:')); setList((await Promise.all(ks.map((k) => kv.get(k)))).sort((a, b) => b.at - a.at)); };
+  useEffect(() => { load(); }, [id]);
+  const create = async () => { const p = { id: rid(), ...f, title: f.title || 'My Movie', story: '', chars: [], scenes: [], at: Date.now() }; await kv.set('p:' + p.id, p); setId(p.id); };
+  if (id) return html`<${Studio} id=${id} back=${() => setId(null)} />`;
+  const pick = (k, v, cur) => `btn !min-h-[3rem] ${cur === v ? 'red' : ''}`;
+  return html`<div class="mx-auto max-w-lg space-y-4 p-4 pb-16">
+    <div class="flex items-center justify-between"><h1 class="text-3xl font-extrabold"><span class="text-red-600">Cine</span>AI</h1>
+      <button class="rounded-xl bg-zinc-800 px-4 py-2 text-sm" onClick=${() => { L = L === 'ta' ? 'en' : 'ta'; localStorage.lang = L; tick((x) => x + 1); }}>${t('lang')}</button></div>
+    <div class="card">
+      <input class="inp" placeholder=${t('title')} value=${f.title} onInput=${(e) => setF({ ...f, title: e.target.value })} />
+      <div class="grid grid-cols-2 gap-2">${Object.keys(T.en.genres).map((g) => html`<button class=${pick('g', g, f.genre)} onClick=${() => setF({ ...f, genre: g })}>${t('genres')[g]}</button>`)}</div>
+      <div class="grid grid-cols-2 gap-2">${['16:9', '9:16'].map((a) => html`<button class=${pick('a', a, f.aspect)} onClick=${() => setF({ ...f, aspect: a })}>${a === '16:9' ? '▭ 16:9' : '▯ 9:16 Reels'}</button>`)}</div>
+      <button class="btn red" onClick=${create}>${t('create')}</button>
+    </div>
+    <h2 class="pt-2 font-bold">${t('projects')}</h2>
+    ${!list.length && html`<p class="text-sm text-zinc-500">${t('empty')}</p>`}
+    ${list.map((p) => html`<div class="card !space-y-2"><button class="w-full text-left" onClick=${() => setId(p.id)}>
+        <div class="flex gap-3"><div class="h-16 w-16 shrink-0 rounded-xl bg-zinc-800 bg-cover bg-center" style=${p.chars[0]?.img ? `background-image:url(${p.chars[0].img})` : ''}></div>
+        <div><div class="text-lg font-semibold">${p.title}</div><div class="text-sm text-zinc-400">${t('genres')[p.genre]} · ${p.aspect} · ${p.scenes.filter((s) => s.has).length}/${p.scenes.length}</div></div></div></button>
+      <button class="w-full py-2 text-sm text-zinc-500" onClick=${async () => { if (confirm(t('confirm'))) { for (const s of p.scenes) await kv.del('c:' + s.id); await kv.del('p:' + p.id); load(); } }}>${t('del')}</button></div>`)}
+    <button class="text-sm text-zinc-500" onClick=${() => setCfg(!cfg)}>⚙ ${t('code')}</button>
+    ${cfg && html`<input class="inp" type="password" value=${localStorage.code || ''} onInput=${(e) => (localStorage.code = e.target.value)} />`}
+  </div>`;
+}
+
+function Studio({ id, back }) {
+  const [p, setP] = useState(null), [tab, setTab] = useState('story'), [err, setErr] = useState(''), [prog, setProg] = useState(null), [urls, setUrls] = useState({}), [idx, setIdx] = useState(0);
+  const [subs, setSubs] = useState(true), [vol, setVol] = useState(0.3), [merging, setMerging] = useState(false), [cf, setCf] = useState({ name: '', age: '', pers: '', dress: '', voice: 'Male 1', img: '' });
+  const ref = useRef(), timer = useRef();
+  useEffect(() => { kv.get('p:' + id).then((x) => { ref.current = x; setP(x); }); }, [id]);
+  const upd = (fn) => { const n = fn(ref.current); ref.current = n; setP(n); clearTimeout(timer.current); timer.current = setTimeout(() => kv.set('p:' + id, ref.current), 400); };
+  const setScene = (i, patch) => upd((x) => ({ ...x, scenes: x.scenes.map((s, k) => (k === i ? { ...s, ...patch } : s)) }));
+  const loadUrl = async (sid) => { const b = await kv.get('c:' + sid); if (b) setUrls((u) => ({ ...u, [sid]: URL.createObjectURL(b) })); };
+  useEffect(() => { p && p.scenes.forEach((s) => s.has && !urls[s.id] && loadUrl(s.id)); }, [p && p.scenes.map((s) => s.has).join()]);
+  if (!p) return html`<div class="p-8 text-zinc-400">…</div>`;
+
+  const move = (i, j) => { if (j < 0 || j >= p.scenes.length) return; upd((x) => { const s = [...x.scenes]; s.splice(j, 0, s.splice(i, 1)[0]); return { ...x, scenes: s }; }); };
+  const split = () => { if (!p.story.trim()) return; upd((x) => ({ ...x, scenes: splitStory(x.story) })); };
+  const addChar = async () => { if (!cf.name.trim()) return; upd((x) => ({ ...x, chars: [...x.chars, { id: rid(), ...cf }] })); setCf({ name: '', age: '', pers: '', dress: '', voice: Object.keys(VOICES).find((v) => v !== cf.voice) || 'Male 1', img: '' }); };
+
+  async function generate(all) {
+    setErr('');
+    try {
+      if (all) for (const s of ref.current.scenes) { await kv.del('c:' + s.id); }
+      if (all) { upd((x) => ({ ...x, scenes: x.scenes.map((s) => ({ ...s, has: false, op: null })) })); setUrls({}); }
+      let prev = null; const n = ref.current.scenes.length;
+      for (let i = 0; i < n; i++) {
+        const s = ref.current.scenes[i]; let blob = s.has ? await kv.get('c:' + s.id) : null;
+        if (!blob) {
+          setProg({ pct: Math.round((i / n) * 100), msg: `${t('generating')} ${i + 1}/${n}` });
+          let op = s.op;
+          if (!op) { const img = prev || ref.current.chars.find((c) => c.img)?.img; op = (await call({ action: 'start', prompt: buildPrompt(ref.current, i), aspect: ref.current.aspect, image: img && img.split(',')[1] })).id; setScene(i, { op }); }
+          let uri; for (let k = 0; k < 90 && !uri; k++) { await sleep(8000); const st = await call({ action: 'status', id: op }); if (st.done) { if (st.error) { setScene(i, { op: null }); throw new Error(st.error); } uri = st.uri; } setProg({ pct: Math.round(((i + Math.min(0.9, k / 20)) / n) * 100), msg: `${t('generating')} ${i + 1}/${n}` }); }
+          if (!uri) throw new Error('Timeout');
+          const r = await fetch('/api/video?uri=' + encodeURIComponent(uri), { headers: hdr() }); if (!r.ok) throw new Error('Download failed ' + r.status);
+          blob = await r.blob(); await kv.set('c:' + s.id, blob); setScene(i, { has: true, op: null }); loadUrl(s.id);
+        }
+        prev = await lastFrame(blob);
+      }
+      setProg({ pct: 100, msg: '✓' });
+    } catch (e) { setErr(e.message); setProg(null); }
+  }
+  async function download() {
+    setMerging(true); setErr('');
+    try {
+      const items = []; for (const s of p.scenes) if (s.has) items.push({ blob: await kv.get('c:' + s.id), sc: s });
+      const { blob, ext } = await merge(p, items, { subs, vol, music: await kv.get('m:' + id) });
+      save(`${p.title}.${ext}`, blob);
+    } catch (e) { setErr(e.message); }
+    setMerging(false);
+  }
+  const done = p.scenes.filter((s) => s.has).length, cur = p.scenes[idx];
+  const tabBtn = (k, l) => html`<button class=${`py-4 text-base font-semibold ${tab === k ? 'border-t-2 border-red-600 text-white' : 'text-zinc-500'}`} onClick=${() => setTab(k)}>${l}</button>`;
+
+  return html`<div class="mx-auto flex min-h-full max-w-lg flex-col">
+    <header class="flex items-center gap-2 p-3"><button class="rounded-xl bg-zinc-800 px-4 py-3" onClick=${back}>←</button>
+      <input class="min-w-0 flex-1 bg-transparent text-xl font-bold outline-none" value=${p.title} onInput=${(e) => upd((x) => ({ ...x, title: e.target.value }))} /></header>
+    ${err && html`<div class="mx-3 mb-2 rounded-xl bg-red-950 p-3 text-sm text-red-300" onClick=${() => setErr('')}>${err}</div>`}
+    <main class="flex-1 space-y-3 p-3 pb-28">
+    ${tab === 'story' && html`<textarea class="inp h-48" placeholder=${t('storyPh')} value=${p.story} onInput=${(e) => upd((x) => ({ ...x, story: e.target.value }))}></textarea>
+      <button class="btn red" onClick=${split}>${t('split')}</button>
+      ${p.scenes.map((s, i) => html`<div class="card" key=${s.id}>
+        <div class="flex items-center gap-2"><b class="flex-1">${t('scene')} ${i + 1} ${s.has ? '✅' : ''}</b>
+          <button class="rounded-xl bg-zinc-800 px-4 py-2" onClick=${() => move(i, i - 1)}>↑</button><button class="rounded-xl bg-zinc-800 px-4 py-2" onClick=${() => move(i, i + 1)}>↓</button>
+          <button class="rounded-xl bg-zinc-800 px-4 py-2 text-red-400" onClick=${() => upd((x) => ({ ...x, scenes: x.scenes.filter((_, k) => k !== i) }))}>✕</button></div>
+        <textarea class="inp h-24" placeholder=${t('visual')} value=${s.visual} onInput=${(e) => setScene(i, { visual: e.target.value, has: false })}></textarea>
+        <textarea class="inp h-20" placeholder=${t('dlg')} value=${s.dialogue} onInput=${(e) => setScene(i, { dialogue: e.target.value, has: false })}></textarea>
+        <div class="grid grid-cols-[1fr_96px] gap-2"><select class="inp" value=${s.camera} onChange=${(e) => setScene(i, { camera: +e.target.value })}>${t('cams').map((c, k) => html`<option value=${k}>${c}</option>`)}</select>
+          <select class="inp" value=${s.duration} onChange=${(e) => setScene(i, { duration: +e.target.value })}>${[4, 6, 8].map((d) => html`<option value=${d}>${d}s</option>`)}</select></div></div>`)}
+      <button class="btn" onClick=${() => upd((x) => ({ ...x, scenes: [...x.scenes, { id: rid(), visual: '', dialogue: '', camera: 1, duration: 8 }] }))}>${t('add')}</button>`}
+
+    ${tab === 'chars' && html`${p.chars.map((c) => html`<div class="card !flex gap-3"><div class="h-20 w-20 shrink-0 rounded-xl bg-zinc-800 bg-cover bg-center" style=${c.img ? `background-image:url(${c.img})` : ''}></div>
+        <div class="flex-1"><div class="text-lg font-semibold">${c.name} <span class="text-sm text-zinc-500">${c.age}</span></div><div class="text-sm text-zinc-400">${c.pers}</div><div class="text-sm text-red-400">${c.voice}</div></div>
+        <button class="self-start px-2 text-zinc-500" onClick=${() => upd((x) => ({ ...x, chars: x.chars.filter((k) => k.id !== c.id) }))}>✕</button></div>`)}
+      <div class="card">
+        <label class="flex h-40 cursor-pointer items-center justify-center overflow-hidden rounded-2xl bg-zinc-800 text-center text-zinc-300">
+          ${cf.img ? html`<img src=${cf.img} class="h-full object-cover" />` : t('photo')}
+          <input type="file" accept="image/*" hidden onChange=${async (e) => e.target.files[0] && setCf({ ...cf, img: await shrink(e.target.files[0]) })} /></label>
+        <input class="inp" placeholder=${t('name')} value=${cf.name} onInput=${(e) => setCf({ ...cf, name: e.target.value })} />
+        <div class="grid grid-cols-2 gap-2"><input class="inp" inputmode="numeric" placeholder=${t('age')} value=${cf.age} onInput=${(e) => setCf({ ...cf, age: e.target.value })} />
+          <select class="inp" value=${cf.voice} onChange=${(e) => setCf({ ...cf, voice: e.target.value })}>${Object.keys(VOICES).map((v) => html`<option>${v}</option>`)}</select></div>
+        ${p.chars.some((c) => c.voice === cf.voice) && html`<p class="text-sm text-amber-400">⚠ ${t('voice')}: வேற voice தேர்ந்தெடுங்க / pick a different voice</p>`}
+        <input class="inp" placeholder=${t('pers')} value=${cf.pers} onInput=${(e) => setCf({ ...cf, pers: e.target.value })} />
+        <input class="inp" placeholder=${t('dress')} value=${cf.dress} onInput=${(e) => setCf({ ...cf, dress: e.target.value })} />
+        <button class="btn red" onClick=${addChar}>${t('save')}</button></div>`}
+
+    ${tab === 'video' && html`${!p.scenes.length ? html`<p class="text-zinc-500">${t('noScenes')}</p>` : html`
+      <div class=${`mx-auto overflow-hidden rounded-2xl bg-black ${p.aspect === '9:16' ? 'w-56' : 'w-full'}`} style=${`aspect-ratio:${p.aspect === '9:16' ? '9/16' : '16/9'}`}>
+        ${cur && urls[cur.id] ? html`<video key=${urls[cur.id]} src=${urls[cur.id]} class="h-full w-full object-cover" controls playsinline autoplay onEnded=${() => idx + 1 < p.scenes.length && setIdx(idx + 1)}></video>` : html`<div class="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-500">${cur?.visual}</div>`}</div>
+      <div class="flex gap-2 overflow-x-auto pb-1">${p.scenes.map((s, i) => html`<button class=${`h-12 min-w-[3.5rem] shrink-0 rounded-xl ${i === idx ? 'bg-red-600' : 'bg-zinc-800'}`} onClick=${() => setIdx(i)}>${i + 1}${s.has ? ' ✓' : ''}</button>`)}</div>
+      <button class="btn red" disabled=${!!prog && prog.pct < 100} onClick=${() => generate(false)}>${t('gen')} (${done}/${p.scenes.length})</button>
+      ${prog && html`<div class="h-3 overflow-hidden rounded-full bg-zinc-800"><div class="h-full bg-red-600 transition-all" style=${`width:${prog.pct}%`}></div></div><p class="text-sm text-zinc-400">${prog.pct}% · ${prog.msg}</p>`}
+      ${cur?.has && html`<button class="btn" onClick=${async () => save(`scene${idx + 1}.mp4`, await kv.get('c:' + cur.id))}>⬇ ${t('clip')} (${t('scene')} ${idx + 1})</button>`}
+      <div class="card">
+        <label class="btn flex cursor-pointer items-center justify-center">${t('music')}<input type="file" accept="audio/*" hidden onChange=${(e) => e.target.files[0] && kv.set('m:' + id, e.target.files[0])} /></label>
+        <label class="flex items-center gap-3 text-sm text-zinc-400"><span class="w-24">${t('vol')}</span><input type="range" min="0" max="1" step="0.05" class="h-8 flex-1 accent-red-600" value=${vol} onInput=${(e) => setVol(+e.target.value)} /></label>
+        <label class="flex items-center gap-3 py-1"><input type="checkbox" class="h-6 w-6 accent-red-600" checked=${subs} onChange=${(e) => setSubs(e.target.checked)} />${t('subs')}</label>
+        <button class="btn red" disabled=${merging || done < 1} onClick=${download}>${merging ? t('merging') : t('dl')}</button></div>
+      <button class="btn" onClick=${() => confirm(t('confirm')) && generate(true)}>${t('again')}</button>`}`}
+    </main>
+    <nav class="fixed inset-x-0 bottom-0 mx-auto grid max-w-lg grid-cols-3 border-t border-zinc-800 bg-zinc-950 pb-[env(safe-area-inset-bottom)]">${tabBtn('story', '📝 ' + t('story'))}${tabBtn('chars', '🧑 ' + t('chars'))}${tabBtn('video', '🎬 ' + t('video'))}</nav>
+  </div>`;
+}
+render(html`<${App} />`, document.getElementById('app'));
+</script>
+</body>
+</html>
